@@ -1,0 +1,65 @@
+# Διαχωρισμός σε επιμέρους αρχεία και φύλλα ανάλογα με κωδικό
+
+# TODO: ξεχωριστό εργαλείο που ελέγχει ότι τα αθροίσματα στο αρχικό είναι ίσα με τα αθροίσματα στα επιμέρους
+
+import openpyxl
+import time
+
+print("Διαχωρισμός σε επιμέρους αρχεία και φύλλα ανάλογα με κωδικό")
+infilename = input("Όνομα αρχείου για διαμερισμό: ")
+
+# άνοιγμα του αρχείου εισόδου και επιλογή ενεργού φύλλου
+print("Φόρτωση του αρχείου εισόδου:", infilename)
+inbook = openpyxl.load_workbook(infilename + ".xlsx", read_only=True)
+insheet = inbook.active
+
+# πλήθος εγγραφών
+# η επόμενη γραμμή δεν είναι πάντα απαραίτητη, αλλά χρειάζεται σε μερικά φύλλα
+insheet.calculate_dimension(force=True)
+nb_rows = insheet.max_row
+print("Το ενεργό φύλλο περιέχει", nb_rows, "εγγραφές.")
+
+# γραμμή επικεφαλίδων (1-based), υποθέτουμε ότι υπάρχει οπωσδήποτε
+headings_row = int(input("Γραμμή επικεφαλίδων: "))
+headings = tuple(cell.value for cell in insheet[str(headings_row)])
+# επικεφαλίδα στήλης που θα αποτελεί το κριτήριο διαχωρισμού
+# αν δεν υπάρχει προκύπτει exception
+key_name = input("Επικεφαλίδα στήλης (κριτήριο διαχωρισμού): ")
+key_column = headings.index(key_name)
+
+start = time.time()
+print("Γίνεται διαχωρισμός...")
+
+# απεικόνιση (dict) από αρχικό ψηφίου κωδικού σε αντίστοιχο βιβλίο εισόδου - αρχικά κενή
+outbooks = {}
+
+# row: μια πλειάδα (tuple) με τα κελιά μιας γραμμής, διατρέχει όλες τις γραμμές του αρχείου
+for row in insheet.iter_rows(min_row=headings_row+1):
+
+    # values: μια πλειάδα (tuple) με τις τιμές των κελιών της γραμμής row
+    values = tuple(cell.value for cell in row)
+
+    # key: το "κλειδί" με βάση το οποίο θα γίνει ο διαχωρισμός
+    key = values[key_column]
+    # το πρώτο ψηφίο του κλειδιού: κριτήριο για το διαχωρισμό σε αρχεία
+    first = key[0]
+    # τα τέσσερα πρώτα ψηφία του κλειδιού: κριτήριο για το διαχωρισμό σε φύλλα, εντός του ίδιου αρχείου
+    four = key[:4]
+
+    # αν δεν υπάρχει αντίστοιχο workbook τότε δημιουργείται
+    if first not in outbooks:
+        outbooks[first] = openpyxl.Workbook(write_only=True)
+    # αν δεν υπάρχει αντίστοιχο φύλλο, τότε δημιουργείται
+    if four not in outbooks[first].sheetnames:
+        outbooks[first].create_sheet(four)
+        outbooks[first][four].append(headings)
+    # η τρέχουσα εγγραφή προστίθεται στο κατάλληλο φύλλο του κατάλληλου workbook
+    outbooks[first][four].append(values)
+  
+duration = time.time() - start
+print("Διαχωρίστηκαν!", nb_rows, "εγγραφές σε", "%.2f" % duration, "δευτερόλεπτα.")
+
+print("Αποθήκευση αρχείων.")
+for first, book in outbooks.items():
+    book.save(infilename + ".part." + first + ".xlsx")
+
